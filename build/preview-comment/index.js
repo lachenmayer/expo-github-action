@@ -15937,24 +15937,49 @@ async function projectInfo(dir) {
     catch (error) {
         throw new Error(`Could not fetch the project info from ${dir}, reason:\n${error.message || error}`);
     }
-    const { name, slug, owner } = JSON.parse(stdout);
-    return { name, slug, owner };
+    const { name, slug, owner, updates } = JSON.parse(stdout);
+    return { name, slug, owner, updates };
 }
 exports.projectInfo = projectInfo;
 /**
- * Create a QR code for an update on project, with an optional release channel.
+ * Create a QR code for a project update.
+ *
+ * Creates a QR code for a custom dev client if an EAS Update URL is present in
+ * the project info, or an Expo Go QR otherwise.
  */
 function projectQR(project, channel) {
+    if (project.updates?.url != null) {
+        return devClientQR(project, channel);
+    }
+    else {
+        return expoGoQR(project, channel);
+    }
+}
+exports.projectQR = projectQR;
+/**
+ * Create a QR code which opens a custom development client.
+ */
+function devClientQR(project, channel) {
+    const updatesUrl = project.updates?.url;
+    (0, assert_1.ok)(updatesUrl, 'Could not create a dev client QR without an updates URL.');
+    const updatesUrlWithChannel = new url_1.URL(updatesUrl);
+    updatesUrlWithChannel.searchParams.append('channel-name', channel);
+    const qrUrl = new url_1.URL('https://qr.expo.dev/development-client');
+    qrUrl.searchParams.append('appScheme', `exp+${project.slug}`);
+    qrUrl.searchParams.append('url', updatesUrlWithChannel.toString());
+    return qrUrl.toString();
+}
+/**
+ * Create a QR code which opens Expo Go.
+ */
+function expoGoQR(project, channel) {
     (0, assert_1.ok)(project.owner, 'Could not create a QR code for project without owner');
     const url = new url_1.URL('https://qr.expo.dev/expo-go');
     url.searchParams.append('owner', project.owner);
     url.searchParams.append('slug', project.slug);
-    if (channel) {
-        url.searchParams.append('releaseChannel', channel);
-    }
+    url.searchParams.append('releaseChannel', channel);
     return url.toString();
 }
-exports.projectQR = projectQR;
 /**
  * Create a link for the project in Expo.
  */

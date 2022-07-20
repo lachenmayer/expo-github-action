@@ -1,4 +1,4 @@
-import { info, exportVariable } from '@actions/core';
+import { exportVariable, info } from '@actions/core';
 import { exec, getExecOutput } from '@actions/exec';
 import { which } from '@actions/io';
 import { ok as assert } from 'assert';
@@ -17,6 +17,7 @@ export interface ProjectInfo {
   name: string;
   slug: string;
   owner?: string;
+  updates?: { url?: string };
 }
 
 export enum AppPlatform {
@@ -152,22 +153,51 @@ export async function projectInfo(dir: string): Promise<ProjectInfo> {
     throw new Error(`Could not fetch the project info from ${dir}, reason:\n${error.message || error}`);
   }
 
-  const { name, slug, owner } = JSON.parse(stdout);
-  return { name, slug, owner };
+  const { name, slug, owner, updates } = JSON.parse(stdout);
+  return { name, slug, owner, updates };
 }
 
 /**
- * Create a QR code for an update on project, with an optional release channel.
+ * Create a QR code for a project update.
+ *
+ * Creates a QR code for a custom dev client if an EAS Update URL is present in
+ * the project info, or an Expo Go QR otherwise.
  */
-export function projectQR(project: ProjectInfo, channel?: string): string {
+export function projectQR(project: ProjectInfo, channel: string): string {
+  if (project.updates?.url != null) {
+    return devClientQR(project, channel);
+  } else {
+    return expoGoQR(project, channel);
+  }
+}
+
+/**
+ * Create a QR code which opens a custom development client.
+ */
+function devClientQR(project: ProjectInfo, channel: string): string {
+  const updatesUrl = project.updates?.url;
+  assert(updatesUrl, 'Could not create a dev client QR without an updates URL.');
+
+  const updatesUrlWithChannel = new URL(updatesUrl);
+  updatesUrlWithChannel.searchParams.append('channel-name', channel);
+
+  const qrUrl = new URL('https://qr.expo.dev/development-client');
+  qrUrl.searchParams.append('appScheme', `exp+${project.slug}`);
+  qrUrl.searchParams.append('url', updatesUrlWithChannel.toString());
+
+  return qrUrl.toString();
+}
+
+/**
+ * Create a QR code which opens Expo Go.
+ */
+function expoGoQR(project: ProjectInfo, channel: string): string {
   assert(project.owner, 'Could not create a QR code for project without owner');
 
   const url = new URL('https://qr.expo.dev/expo-go');
   url.searchParams.append('owner', project.owner);
   url.searchParams.append('slug', project.slug);
-  if (channel) {
-    url.searchParams.append('releaseChannel', channel);
-  }
+  url.searchParams.append('releaseChannel', channel);
 
   return url.toString();
 }
